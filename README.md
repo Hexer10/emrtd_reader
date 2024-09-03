@@ -14,7 +14,7 @@ The application follows the ICAO 9303 standard for the MRTD.
   the authentication process. See the [MrzRecognizer](lib/src/components/ocr/mrz_recognizer.dart) class.
 - The authentication is performed using the BAC (Basic Access Control) protocol.
 - First the COM file is read to get all the available bytes then all the supported files are read. See
-  the [MRTDInterface\.authenticate](lib/src/components/nfc/mrtd_interface.dart#35) method.
+  the [MRTDInterface\.authenticate](lib/src/components/nfc/mrtd_interface.dart#L35) method.
 
 ## What works
 
