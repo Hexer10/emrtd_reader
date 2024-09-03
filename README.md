@@ -3,7 +3,10 @@
 An app to read the Machine Readable Travel Document (MRTD) chip of an electronic using NFC.
 The application follows the ICAO 9303 standard for the MRTD.
 
-![screen capture](docs/screen.gif)
+
+<p align="center">
+<img src="docs/screen.gif" alt="screen capture" height="300">
+</p>
 
 ## How it works
 
