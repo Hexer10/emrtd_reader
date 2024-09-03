@@ -20,7 +20,7 @@ void main() {
           [0x22, 0x88, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x00]);
       final data = Uint8List.fromList([10, 20, 30, 40, 50, 60, 70, 80]);
 
-      final result = macEnc(key, data);
+      final result = macEnc(key, data, false);
       expect(result,
           equals(Uint8List.fromList([23, 178, 198, 248, 245, 165, 8, 101])));
     });
@@ -46,7 +46,7 @@ void main() {
       ]);
       final data = Uint8List.fromList([10, 20, 30, 40, 50, 60, 70, 80]);
 
-      final result = macEnc(key, data);
+      final result = macEnc(key, data, false);
       expect(result,
           equals(Uint8List.fromList([247, 80, 35, 172, 217, 38, 86, 53])));
     });
@@ -73,7 +73,7 @@ void main() {
       ]);
       final data = Uint8List.fromList([10, 20, 30, 40, 50, 60, 70, 80]);
 
-      final result = macEnc(key, data);
+      final result = macEnc(key, data, false);
       expect(result,
           equals(Uint8List.fromList([247, 80, 35, 172, 217, 38, 86, 53])));
     });
@@ -110,7 +110,7 @@ void main() {
         80
       ]);
 
-      final result = desEnc(key, data);
+      final result = desEnc(key, data, false);
       expect(
           result,
           equals(Uint8List.fromList([
@@ -187,7 +187,7 @@ void main() {
         80
       ]);
 
-      final result = desEnc(key, data);
+      final result = desEnc(key, data, false);
       expect(
           result,
           equals(Uint8List.fromList([

@@ -1,3 +1,4 @@
+// ignore_for_file: lower_case_with_underscores
 /// This files contains function related to 3DS encryption used by the ICAO 9303 MRTD standard.
 
 import 'dart:typed_data';
@@ -7,8 +8,7 @@ import 'package:pointycastle/pointycastle.dart';
 ///
 /// - [masterKey] must be of length 8, 16, or 24 bytes.
 /// - [data] will be padded to a multiple of 8 bytes if necessary and [withPadding] is true.
-Uint8List desEnc(Uint8List masterKey, Uint8List data,
-    [bool withPadding = false]) {
+Uint8List desEnc(Uint8List masterKey, Uint8List data, withPadding) {
   if (withPadding) {
     data = data.withPadding();
   }
@@ -60,7 +60,7 @@ Uint8List desEnc(Uint8List masterKey, Uint8List data,
 /// - [data] The data to generate a MAC for, it will be padded to a multiple of 8 bytes if necessary and [withPadding] is true.
 ///
 /// Returns the MAC.
-Uint8List macEnc(Uint8List key, Uint8List data, [bool withPadding = false]) {
+Uint8List macEnc(Uint8List key, Uint8List data, withPadding) {
   assert(key.length >= 8, 'Key length must be at least 8 bytes');
   if (withPadding) {
     data = data.withPadding();
@@ -78,10 +78,10 @@ Uint8List macEnc(Uint8List key, Uint8List data, [bool withPadding = false]) {
   final k3 = key.sublist(k3Start, k3Start + 8);
 
   // Perform TripleDES encryption and decryption to generate the MAC
-  final mid1 = desEnc(k1, data); // First encryption
+  final mid1 = desEnc(k1, data, false); // First encryption
   final mid2 =
       desDec(k2, mid1.sublist(mid1.length - 8)); // Decrypt the last block
-  final mid3 = desEnc(k3, mid2.sublist(0, 8)); // Final encryption
+  final mid3 = desEnc(k3, mid2.sublist(0, 8), false); // Final encryption
 
   return mid3; // Return the final MAC value
 }

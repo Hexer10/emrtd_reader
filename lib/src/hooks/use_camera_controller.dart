@@ -1,3 +1,5 @@
+// From https://github.com/HosseinYousefi/camera_hooks
+
 import 'package:camera/camera.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -40,7 +42,7 @@ class _CameraControllerHook extends Hook<CameraController?> {
   /// When null the imageFormat will fallback to the platforms default.
   final ImageFormatGroup? imageFormatGroup;
 
-  _CameraControllerHook(
+  const _CameraControllerHook(
     this.description,
     this.resolutionPreset, {
     this.enableAudio = true,

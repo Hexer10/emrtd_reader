@@ -92,7 +92,8 @@ class MrzRecognizer {
     }
     return null;
   }
-
+/*
+  Used in a previous implementation
   MRZData? _checkTD1Dates(String line) {
     if (line.length < 15) return null;
 
@@ -121,7 +122,7 @@ class MrzRecognizer {
       return data;
     }
     return null;
-  }
+  }*/
 
   MRZData? _checkTD1(String line) {
     return _checkTD1No(line);

@@ -75,13 +75,10 @@ class MRTDInterface {
     final rndIs1 = _getRandomBytes(8);
     final kIs = _getRandomBytes(16);
 
-    final eIs1 =
-        desEnc(encKey, [...rndIs1, ...rndMrtd.response, ...kIs].toUint8List());
+    final eIs1 = desEnc(
+        encKey, [...rndIs1, ...rndMrtd.response, ...kIs].toUint8List(), false);
     final eIsMac = macEnc(macKey, eIs1, true);
 
-    print(birthStr);
-    print(expireStr);
-    print(docNoStr);
     final command = ApduCommand(
         cla: 0x00,
         ins: 0x82,

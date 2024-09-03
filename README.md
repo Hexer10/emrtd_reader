@@ -38,3 +38,6 @@ Contributions are welcome!
 
 - [ICAO 9303 - P11](https://www.icao.int/publications/Documents/9303_p11_cons_en.pdf) - Protocol used my the eMRTD chip.
 - [ICAO 9303 - P4](https://www.icao.int/publications/Documents/9303_p4_cons_en.pdf) - Specification for the MRZ zone. 
+
+## Credits
+- [cie-nis-python-sdk](https://github.com/italia/cie-nis-python-sdk/tree/master): starting concept

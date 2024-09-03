@@ -2,7 +2,6 @@
 
 import 'dart:convert';
 import 'dart:typed_data';
-import 'dart:math' as math;
 import 'package:collection/collection.dart';
 
 typedef Int2 = (int, int);
