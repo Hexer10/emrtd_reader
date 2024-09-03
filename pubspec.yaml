@@ -1,0 +1,44 @@
+name: emrtd_reader
+description: "A new Flutter project."
+# The following line prevents the package from being accidentally published to
+# pub.dev using `flutter pub publish`. This is preferred for private packages.
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+
+
+version: 1.0.0
+
+environment:
+  sdk: ^3.5.1
+
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  nfc_manager: ^3.3.0
+  pointycastle: ^3.7.3
+  crypto: ^3.0.3
+  collection: ^1.18.0
+  path_provider: ^2.1.4
+  google_mlkit_text_recognition: ^0.13.0
+  camera: ^0.11.0+1
+  json_annotation: ^4.9.0
+  equatable: ^2.0.5
+  flutter_hooks: ^0.20.5
+  image: ^4.2.0
+  opencv_dart: ^1.2.3
+  path: ^1.9.0
+  meta: ^1.15.0
+  intl: ^0.19.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+  test: ^1.25.2
+  json_serializable: ^6.8.0
+  build_runner: ^2.4.11
+
+
+flutter:
+  uses-material-design: true
