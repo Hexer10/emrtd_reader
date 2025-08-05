@@ -1,20 +1,18 @@
-import 'dart:convert';
 import 'dart:math' as mrtd_interface;
-import 'dart:typed_data';
 
 import 'package:collection/collection.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
-import 'package:meta/meta.dart';
 
-import '../../models/travel_document.dart';
-import '3des.dart';
+import '../auth_credential.dart';
+import 'apdu/exceptions.dart';
+import 'crypto/3des.dart';
 import 'apdu/apdu_command.dart';
 import 'apdu/apdu_response.dart';
-import 'asn1.dart';
-import 'asn1_utils.dart';
+import 'asn/asn1.dart';
+import 'asn/asn1_utils.dart';
 import 'datagroups/data_group.dart';
-import 'diffie_hellman.dart' as dh;
+import 'crypto/diffie_hellman.dart' as dh;
 import 'nfc_card.dart';
 
 typedef ProgressFunction = void Function(int current, int total);
@@ -47,7 +45,7 @@ class MRTDInterface {
   }
 
   /// Get security information from the card (EF.CardAccess).
-  Future<DataGroup14?> getCardSecurity() async {
+  Future<DataGroup14?> _getCardSecurity() async {
     try {
       // Select EF.CardAccess
       await send(ApduCommand(
@@ -75,43 +73,33 @@ class MRTDInterface {
     }
   }
 
-  /// Authenticates with the card using PACE or BAC.
+  /// Authenticates with the card.
   ///
-  /// Provide either MRZ details (`birthStr`, `expireStr`, `docNoStr`) for BAC,
-  /// or a `can` (Card Access Number) for PACE.
+  /// Provide either [MRZAuthentication] or [CANAuthentication] as the [auth] parameter.
+  /// PACE authentication is preferred if the card supports it.
+  /// BAC is use as a fallback if PACE fails or is not supported AND [MRZAuthentication] was provided.
   ///
-  /// If a `can` is provided and the card supports PACE, PACE wil l be attempted first.
-  /// If PACE fails or is not supported, it will fall back to BAC if MRZ data is available.
-  Future<void> authenticate(
-      {String? birthStr,
-      String? expireStr,
-      String? docNoStr,
-      String? can}) async {
-    final mrzAvailable =
-        birthStr != null && expireStr != null && docNoStr != null;
-    if (mrzAvailable && can != null) {
-      throw AuthException(
-          "Provide either CAN for PACE or MRZ for BAC,  not both.");
+  /// If this is called while already authenticated, it will return immediately.
+  Future<void> authenticate(AuthCredential auth) async {
+    if (_kSessEnc != null && _kSessMac != null) {
+      // Already authenticated
+      return;
     }
-
     // Try PACE first
-    final cardSecurity = await getCardSecurity();
+    final cardSecurity = await _getCardSecurity();
     if (cardSecurity != null && cardSecurity.securityInfos.isNotEmpty) {
       try {
-        if (can != null) {
-          // Use CAN for PACE
-          await authenticatePACE(Uint8List.fromList(utf8.encode(can)),
-              cardSecurity.securityInfos[0], 0x02);
-          return; // PACE with CAN successful
-        } else if (mrzAvailable) {
-          // Use MRZ for PACE
-          final seed = _getBACSeed(birthStr, expireStr, docNoStr);
-          await authenticatePACE(seed, cardSecurity.securityInfos[0], 0x01);
-          return; // PACE with MRZ successful
+        await _authenticatePACE(auth, cardSecurity.securityInfos[0]);
+
+        // Select to prepare for reading data groups - BAC does already do that while authenticating.
+        await _initialSelect();
+        return;
+      } on ApduException catch (e) {
+        if (e.code == '6300') {
+          throw AuthException();
         }
-      } on ApduException {
         // PACE failed, will try to fall back to BAC if possible
-        if (!mrzAvailable) {
+        if (auth is! MRZAuthentication) {
           // If no MRZ data, rethrow the error as we can't fallback to BAC
           rethrow;
         }
@@ -119,22 +107,27 @@ class MRTDInterface {
     }
 
     // Fallback or default to BAC
-    if (mrzAvailable) {
-      return authenticateBAC(birthStr, expireStr, docNoStr);
+    if (auth is MRZAuthentication) {
+      try {
+        return _authenticateBAC(auth);
+      } on ApduException catch (e) {
+        if (e.code == '6300') {
+          throw AuthException();
+        }
+        rethrow;
+      }
     }
 
     // If we are here, authentication was not possible
-    throw AuthException(
-        "Invalid authentication parameters. P rovide CAN for PACE or MRZ for BAC.");
+    throw AuthException("No valid authentication method provided.");
   }
 
   /// Authenticates using Password Authenticated Connection Establishment (PACE).
-  @visibleForTesting
-  Future<void> authenticatePACE(
-      Uint8List seed, SecurityInfo sec, int pswType) async {
+  Future<void> _authenticatePACE(AuthCredential auth, SecurityInfo sec) async {
     // MSE:Set AT command for PACE
     final protocolOid = asn1Tag(sec.protocol.bytes, 0x80);
-    final pswTypeTag = asn1Tag([pswType], 0x83); // 0x02 = CAN, 0x01 = MRZ Seed
+    final pswTypeTag =
+        asn1Tag([auth.type], 0x83); // 0x02 = CAN, 0x01 = MRZ Seed
     final mseData = Uint8List.fromList([...protocolOid, ...pswTypeTag]);
 
     await send(ApduCommand(
@@ -158,8 +151,11 @@ class MRTDInterface {
     final encryptedNonce = asn.root[0x80]!.bytes;
 
     // Derive key to decrypt nonce
-    final nonceKey =
-        sha1.convert([...seed, 0x00, 0x00, 0x00, 0x03]).bytes.take(16).toList();
+    final nonceKey = sha1
+        .convert([...auth.seed, 0x00, 0x00, 0x00, 0x03])
+        .bytes
+        .take(16)
+        .toList();
 
     final nonce = desDec(Uint8List.fromList(nonceKey), encryptedNonce);
 
@@ -257,8 +253,6 @@ class MRTDInterface {
           "PACE authentication failed: MAC mismatch on card's token.");
     }
 
-    print('PACE authentication successful');
-
     _kSessEnc = kSessEnc;
     _kSessMac = kSessMac;
     _seq = Uint8List(8);
@@ -268,12 +262,11 @@ class MRTDInterface {
   /// [birthStr] is the birth date in YYMMDD format
   /// [expireStr] is the expiration date in YYMMDD format
   /// [docNoStr] is the id (number) of the card.
-  Future<void> authenticateBAC(
-      String birthStr, String expireStr, String docNoStr) async {
-    await initialSelect();
+  Future<void> _authenticateBAC(MRZAuthentication auth) async {
+    await _initialSelect();
     final rndMrtd = await _getRandom();
 
-    final kSeed = _getBACSeed(birthStr, expireStr, docNoStr);
+    final kSeed = auth.seed;
 
     final encKey = sha1
         .convert([...kSeed, 0x00, 0x00, 0x00, 0x01])
@@ -327,32 +320,6 @@ class MRTDInterface {
         .sublist(0, 16);
 
     _seq = [...decResp.sublist(4, 8), ...decResp.sublist(12, 16)];
-  }
-
-  Uint8List _getBACSeed(String birthStr, String expireStr, String docNoStr) {
-    final birth = birthStr.codeUnits;
-    final expire = expireStr.codeUnits;
-    final docNo = docNoStr.codeUnits;
-
-    final birthSeed = [
-      ...birth,
-      TravelDocument.computeCheckDigit(birthStr) + 0x30
-    ];
-    final expireSeed = [
-      ...expire,
-      TravelDocument.computeCheckDigit(expireStr) + 0x30
-    ];
-    final docSeed = [
-      ...docNo,
-      TravelDocument.computeCheckDigit(docNoStr) + 0x30
-    ];
-
-    // The SHA1 Hash of the MRZ data
-    return sha1
-        .convert([...docSeed, ...birthSeed, ...expireSeed])
-        .bytes
-        .sublist(0, 16)
-        .toUint8List();
   }
 
   Future<List<int>> readDg(int numDg, {ProgressFunction? progress}) async {
@@ -436,8 +403,8 @@ class MRTDInterface {
     return results;
   }
 
-  /// Sends an "initial selection" APDU to the card preparing it for the authentication
-  Future<ApduResponse> initialSelect() {
+  /// Sends an "initial selection" APDU to the card preparing it for the BAC authentication or reading.
+  Future<ApduResponse> _initialSelect() {
     const command = ApduCommand(
         cla: 0x00,
         ins: 0xA4,
@@ -583,7 +550,6 @@ extension on NFCCardInterface {
   }
 
   Future<ApduResponse> sendRaw(Uint8List bytes) async {
-    // print(ApduCommand.decode(bytes));
     final reply = await transceive(data: bytes);
     final resp = ApduResponse(reply);
     final swCode =
@@ -595,27 +561,8 @@ extension on NFCCardInterface {
   }
 }
 
-class ApduException implements Exception {
-  final String code;
-
-  String get message => 'APDU error: $code';
-
-  ApduException(this.code);
-}
-
-class AuthException implements Exception {
-  final String? message;
-  String get messageOrDefault =>
-      message ?? 'Authentication failed please check the input parameters.';
-
-  AuthException([this.message]);
-
-  @override
-  String toString() => 'AuthException: $messageOrDefault';
-}
-
 /// Performs a XOR between each elements of [a] and [b]. They must be of the same length.
-/// Used in [MRTDInterface.authenticateBAC] to compute the kSeed.
+/// Used in [MRTDInterface._authenticateBAC] to compute the kSeed.
 @visibleForTesting
 Uint8List stringXor(Uint8List a, Uint8List b) {
   if (a.length != b.length) {

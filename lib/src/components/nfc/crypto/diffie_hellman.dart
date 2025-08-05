@@ -1,6 +1,5 @@
 import 'dart:math';
 import 'dart:typed_data';
-import 'package:pointycastle/export.dart';
 
 /// A class to represent a key pair (private and public keys).
 class KeyPair {
@@ -19,11 +18,6 @@ class DiffieHellman {
 
   /// Generates a Diffie-Hellman key pair (private and public keys).
   KeyPair generateKey() {
-/*    // Remove leading zeros from the prime
-    while (prime.isNotEmpty && prime[0] == 0) {
-      prime = prime.sublist(1);
-    }*/
-
     // Generate private key
     final primeSize = prime.length;
     final privateKey = Uint8List(primeSize);
@@ -47,11 +41,6 @@ class DiffieHellman {
 
   /// Computes the shared key using the other party's public key.
   Uint8List computeKey(Uint8List privateKey, Uint8List dhOtherPub) {
-/*    // Remove leading zeros from the prime
-    while (prime.isNotEmpty && prime[0] == 0) {
-      prime = prime.sublist(1);
-    }*/
-
     // Compute shared key: dhOtherPub^privateKey mod prime
     final dhOtherPubBigInt = _uint8ListToBigInt(dhOtherPub);
     final privateKeyBigInt = _uint8ListToBigInt(privateKey);
@@ -68,7 +57,6 @@ class DiffieHellman {
       sharedKey = paddedKey;
     }
     return sharedKey;
-
   }
 
   DiffieHellman map(Uint8List secret, Uint8List nonce) {
@@ -92,7 +80,6 @@ extension on Uint8List {
     return result;
   }
 }
-
 
 /// Converts a `Uint8List` to a `BigInt`.
 BigInt _uint8ListToBigInt(Uint8List bytes) {

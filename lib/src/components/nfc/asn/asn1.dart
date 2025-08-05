@@ -7,7 +7,6 @@ import 'package:collection/collection.dart';
 typedef Int2 = (int, int);
 
 class ASN1 {
-
   static Uint8List getLength(int length) {
     if (length < 0x80) {
       return Uint8List.fromList([length]);

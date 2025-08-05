@@ -63,8 +63,8 @@ class MainView extends HookWidget {
           child: Text(
             'Tap anywhere to\nstart scanning!',
             textAlign: TextAlign.center,
-            style:
-                TextStyle(fontSize: 30, color: Colors.black.withOpacity(0.8)),
+            style: TextStyle(
+                fontSize: 30, color: Colors.black.withValues(alpha: 0.8)),
           ),
         ),
       ),

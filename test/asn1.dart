@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:emrtd_reader/src/components/nfc/asn1.dart';
+import 'package:emrtd_reader/src/components/nfc/asn/asn1.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
