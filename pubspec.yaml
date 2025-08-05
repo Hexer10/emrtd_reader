@@ -15,7 +15,7 @@ dependencies:
   flutter:
     sdk: flutter
 
-  nfc_manager: ^3.3.0
+  nfc_manager: ^4.0.2
   pointycastle: ^3.7.3
   crypto: ^3.0.3
   collection: ^1.18.0
@@ -30,6 +30,7 @@ dependencies:
   path: ^1.9.0
   meta: ^1.15.0
   intl: ^0.19.0
+  wakelock_plus: ^1.3.2
 
 dev_dependencies:
   flutter_test:

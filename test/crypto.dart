@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:emrtd_reader/src/components/nfc/3des.dart';
+import 'package:emrtd_reader/src/components/nfc/crypto/3des.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

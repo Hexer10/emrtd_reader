@@ -56,7 +56,9 @@ class MrzRecognizer {
 
     final numberCD = int.tryParse(line[14]);
     if (numberCD == null ||
-        TravelDocument.computeCheckDigit(number) != numberCD) return null;
+        TravelDocument.computeCheckDigit(number) != numberCD) {
+      return null;
+    }
 
     _tempNumber = number;
     if (_tempDoB != null && _tempDoE != null) {

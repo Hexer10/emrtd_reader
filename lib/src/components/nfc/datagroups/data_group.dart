@@ -1,11 +1,14 @@
 import 'dart:typed_data';
 
+import 'package:emrtd_reader/src/components/nfc/apdu/apdu_command.dart';
+
 import '../../../models/travel_document.dart';
-import '../asn1.dart';
+import '../asn/asn1.dart';
 part 'data_group_1.dart';
 part 'data_group_2.dart';
 part 'data_group_11.dart';
 part 'data_group_12.dart';
+part 'data_group_14.dart';
 part 'data_group_com.dart';
 
 sealed class DataGroup {

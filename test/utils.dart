@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
-import 'package:emrtd_reader/src/components/nfc/3des.dart';
-import 'package:emrtd_reader/src/components/nfc/asn1_utils.dart';
+import 'package:emrtd_reader/src/components/nfc/crypto/3des.dart';
+import 'package:emrtd_reader/src/components/nfc/asn/asn1_utils.dart';
 import 'package:emrtd_reader/src/components/nfc/mrtd_interface.dart';
 import 'package:emrtd_reader/src/models/travel_document.dart';
 import 'package:flutter_test/flutter_test.dart';

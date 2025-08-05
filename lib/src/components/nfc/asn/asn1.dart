@@ -7,6 +7,20 @@ import 'package:collection/collection.dart';
 typedef Int2 = (int, int);
 
 class ASN1 {
+  static Uint8List getLength(int length) {
+    if (length < 0x80) {
+      return Uint8List.fromList([length]);
+    }
+
+    final bytes = <int>[];
+    while (length > 0) {
+      bytes.insert(0, length & 0xFF);
+      length >>= 8;
+    }
+    bytes.insert(0, 0x80 | bytes.length);
+    return Uint8List.fromList(bytes);
+  }
+
   List<int> data;
   late ASNObject root;
 

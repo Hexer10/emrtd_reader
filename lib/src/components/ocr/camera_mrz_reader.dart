@@ -31,7 +31,7 @@ class CameraMRZReader extends HookWidget {
     }, const []);
 
     useEffect(() {
-      if (cameraController != null) {
+      if (cameraController != null && cameraController.value.isInitialized) {
         cameraController.startImageStream((img) async {
           if (imageProcessor.processing) {
             return;

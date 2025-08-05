@@ -12,7 +12,7 @@ class NFCCard implements NFCCardInterface {
   final TransceiveFunction _transceiveFn;
 
   @override
-  Future<Uint8List> transceive({required Uint8List data}) {
+  Future<Uint8List> transceive({required Uint8List data}) async {
     return _transceiveFn(data: data);
   }
 

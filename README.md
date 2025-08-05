@@ -20,14 +20,15 @@ The application follows the ICAO 9303 standard for the MRTD.
 
 - OCR of the MRZ zone (tough it's not perfect).
 - BAC authentication and secure messaging.
+- **PACE authentication** (MRZ and CAN modes) and secure messaging.
 - Read the files: COM, MRZ (DG1), Portrait (DG2), Additional Personal Details (DG11), Additional Document Details (
-  DG12).
+  DG12) and Security Options (EF.SecurityOptions)
 
 ## Todo list
 
 - [ ] Read more files.
 - [ ] Validate the content of the MRTD.
-- [ ] PACE authentication.
+- [x] PACE authentication.
 - [ ] Move TravelDocument models to a separate package.
 - [ ] Move the NFC code to a separate package.
 - [ ] Add more tests.
@@ -36,8 +37,9 @@ Contributions are welcome!
 
 ## Resources
 
-- [ICAO 9303 - P11](https://www.icao.int/publications/Documents/9303_p11_cons_en.pdf) - Protocol used my the eMRTD chip.
+- [ICAO 9303 - P11](https://www.icao.int/publications/Documents/9303_p11_cons_en.pdf) - Protocol used by the eMRTD chip.
 - [ICAO 9303 - P4](https://www.icao.int/publications/Documents/9303_p4_cons_en.pdf) - Specification for the MRZ zone. 
 
 ## Credits
 - [cie-nis-python-sdk](https://github.com/italia/cie-nis-python-sdk/tree/master): starting concept
+- [cie-nis-dotnetcore-sdk](https://github.com/italia/cie-nis-dotnetcore-sdk.git): PACE implementation
