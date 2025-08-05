@@ -20,6 +20,7 @@ The application follows the ICAO 9303 standard for the MRTD.
 
 - OCR of the MRZ zone (tough it's not perfect).
 - BAC authentication and secure messaging.
+- **PACE authentication** (MRZ and CAN modes) and secure messaging.
 - Read the files: COM, MRZ (DG1), Portrait (DG2), Additional Personal Details (DG11), Additional Document Details (
   DG12).
 
@@ -27,7 +28,7 @@ The application follows the ICAO 9303 standard for the MRTD.
 
 - [ ] Read more files.
 - [ ] Validate the content of the MRTD.
-- [ ] PACE authentication.
+- [x] PACE authentication.
 - [ ] Move TravelDocument models to a separate package.
 - [ ] Move the NFC code to a separate package.
 - [ ] Add more tests.

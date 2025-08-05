@@ -22,32 +22,42 @@ class ApduCommand {
             'If data exists lc must match it\'s length');
 
   /// Get the actual bytes for this command.
-  /// Note: not tested for lc longer than 1 byte.
   Uint8List get bytes {
-    assert(data == null || (data!.length == lc));
-    final byteList = [cla, ins, p1, p2];
-    if (lc != null) {
-      if (lc! < 0x100) {
-        byteList.add(lc!);
-      } else {
-        byteList.add(0x00);
-        byteList.add((lc! >> 8) & 0xFF);
-        byteList.add(lc! & 0xFF);
+    final bool extended = (lc ?? 0) > 255 || (le ?? 0) > 255;
+    final header = [cla, ins, p1, p2];
+    if (data == null) {
+      if (le != null) {
+        if (extended) {
+          return Uint8List.fromList(
+              [...header, 0, (le! >> 8) & 0xFF, le! & 0xFF]);
+        }
+        return Uint8List.fromList([...header, le! & 0xFF]);
       }
+      return Uint8List.fromList(header);
     }
-    if (data != null) {
-      byteList.addAll(data!);
+
+    assert(data!.length == lc);
+
+    if (extended) {
+      final b = <int>[
+        ...header,
+        0,
+        (lc! >> 8) & 0xFF,
+        lc! & 0xFF,
+        ...data!,
+      ];
+      if (le != null) {
+        b.addAll([(le! >> 8) & 0xFF, le! & 0xFF]);
+      }
+      return Uint8List.fromList(b);
     }
+
+    final b = <int>[...header, lc! & 0xFF, ...data!];
     if (le != null) {
-      if (le! < 0x100) {
-        byteList.add(le!);
-      } else if (le! < 0x10000) {
-        byteList.add(0x00);
-        byteList.add((le! >> 8) & 0xFF);
-        byteList.add(le! & 0xFF);
-      }
+      b.add(le! & 0xFF);
     }
-    return Uint8List.fromList(byteList);
+
+    return Uint8List.fromList(b);
   }
 
   /// Construct a [ApduCommand] from raw bytes.
@@ -140,7 +150,7 @@ class ApduCommand {
   }
 }
 
-extension on List<int> {
+extension PrettyList on List<int> {
   String toHexString() {
     return map((byte) => byte.toRadixString(16).padLeft(2, '0'))
         .join(' ')

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:nfc_manager/nfc_manager.dart';
-import 'package:nfc_manager/platform_tags.dart';
+import 'package:nfc_manager/nfc_manager_android.dart';
 
 import '../../main.dart';
 import '../components/nfc/datagroups/data_group.dart';
@@ -35,13 +35,15 @@ class NFCReader extends HookWidget {
     final result = useState<Map<String, DataGroup?>?>(null);
 
     useEffect(() {
-      NfcManager.instance.startSession(onDiscovered: (card) async {
-        final isoDep = IsoDep.from(card);
+      NfcManager.instance.startSession(
+        pollingOptions: NfcPollingOption.values.toSet(),
+        onDiscovered: (card) async {
+        final isoDep = IsoDepAndroid.from(card);
         if (isoDep == null) {
           return;
         }
         try {
-          final cie = MRTDInterface(NFCCard(isoDep.transceive));
+          final cie = MRTDInterface(NFCCard(({required Uint8List data}) => isoDep.transceive(data)));
 
           stepsDescription.value = {'Authentication': -1};
           steps.value = ['Authentication'];

@@ -1,16 +1,20 @@
+import 'dart:convert';
 import 'dart:math' as mrtd_interface;
 import 'dart:typed_data';
 
+import 'package:collection/collection.dart';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:meta/meta.dart';
 
 import '../../models/travel_document.dart';
+import '3des.dart';
 import 'apdu/apdu_command.dart';
 import 'apdu/apdu_response.dart';
 import 'asn1.dart';
-import '3des.dart';
 import 'asn1_utils.dart';
 import 'datagroups/data_group.dart';
+import 'diffie_hellman.dart' as dh;
 import 'nfc_card.dart';
 
 typedef ProgressFunction = void Function(int current, int total);
@@ -28,37 +32,248 @@ class MRTDInterface {
 
   MRTDInterface(this._card);
 
-  /// Unlocks the card using the data contained in the MRZ
+  Future<Uint8List> send(ApduCommand command) async {
+    final auth = _kSessEnc != null && _kSessMac != null;
+    if (auth) {
+      return await _sendSM(command);
+    }
+    final resp = (await _card.sendRaw(command.bytes));
+    final swCode =
+        resp.sw.map((e) => e.toRadixString(16)).join().padRight(4, '0');
+    if (swCode != '9000') {
+      throw ApduException(swCode);
+    }
+    return resp.response;
+  }
+
+  /// Get security information from the card (EF.CardAccess).
+  Future<DataGroup14?> getCardSecurity() async {
+    try {
+      // Select EF.CardAccess
+      await send(ApduCommand(
+          cla: 0x00,
+          ins: 0xA4,
+          p1: 0x02,
+          p2: 0x0C,
+          lc: 0x02,
+          data: Uint8List.fromList([0x01, 0x1C])));
+
+      // Read EF.CardAccess file header to get length
+      final r = await send(const ApduCommand(
+          cla: 0x00, ins: 0xB0, p1: 0x00, p2: 0x00, le: 0x06));
+      final len = _parseLength(r);
+
+      // Read the full EF.CardAccess file
+      final data = await send(
+          ApduCommand(cla: 0x00, ins: 0xB0, p1: 0x00, p2: 0x00, le: len));
+
+      final asn = ASN1(data);
+      return DataGroup14.decode(asn.root);
+    } catch (e) {
+      // If any error occurs (e.g., file not found), PACE is not supported.
+      return null;
+    }
+  }
+
+  /// Authenticates with the card using PACE or BAC.
+  ///
+  /// Provide either MRZ details (`birthStr`, `expireStr`, `docNoStr`) for BAC,
+  /// or a `can` (Card Access Number) for PACE.
+  ///
+  /// If a `can` is provided and the card supports PACE, PACE wil l be attempted first.
+  /// If PACE fails or is not supported, it will fall back to BAC if MRZ data is available.
+  Future<void> authenticate(
+      {String? birthStr,
+      String? expireStr,
+      String? docNoStr,
+      String? can}) async {
+    final mrzAvailable =
+        birthStr != null && expireStr != null && docNoStr != null;
+    if (mrzAvailable && can != null) {
+      throw AuthException(
+          "Provide either CAN for PACE or MRZ for BAC,  not both.");
+    }
+
+    // Try PACE first
+    final cardSecurity = await getCardSecurity();
+    if (cardSecurity != null && cardSecurity.securityInfos.isNotEmpty) {
+      try {
+        if (can != null) {
+          // Use CAN for PACE
+          await authenticatePACE(Uint8List.fromList(utf8.encode(can)),
+              cardSecurity.securityInfos[0], 0x02);
+          return; // PACE with CAN successful
+        } else if (mrzAvailable) {
+          // Use MRZ for PACE
+          final seed = _getBACSeed(birthStr, expireStr, docNoStr);
+          await authenticatePACE(seed, cardSecurity.securityInfos[0], 0x01);
+          return; // PACE with MRZ successful
+        }
+      } on ApduException {
+        // PACE failed, will try to fall back to BAC if possible
+        if (!mrzAvailable) {
+          // If no MRZ data, rethrow the error as we can't fallback to BAC
+          rethrow;
+        }
+      }
+    }
+
+    // Fallback or default to BAC
+    if (mrzAvailable) {
+      return authenticateBAC(birthStr, expireStr, docNoStr);
+    }
+
+    // If we are here, authentication was not possible
+    throw AuthException(
+        "Invalid authentication parameters. P rovide CAN for PACE or MRZ for BAC.");
+  }
+
+  /// Authenticates using Password Authenticated Connection Establishment (PACE).
+  @visibleForTesting
+  Future<void> authenticatePACE(
+      Uint8List seed, SecurityInfo sec, int pswType) async {
+    // MSE:Set AT command for PACE
+    final protocolOid = asn1Tag(sec.protocol.bytes, 0x80);
+    final pswTypeTag = asn1Tag([pswType], 0x83); // 0x02 = CAN, 0x01 = MRZ Seed
+    final mseData = Uint8List.fromList([...protocolOid, ...pswTypeTag]);
+
+    await send(ApduCommand(
+        cla: 0x00,
+        ins: 0x22,
+        p1: 0xC1,
+        p2: 0xA4,
+        lc: mseData.length,
+        data: mseData));
+
+    // GA 1: Get Nonce from card
+    var resp = await send(const ApduCommand(
+        cla: 0x10,
+        ins: 0x86,
+        p1: 0x00,
+        p2: 0x00,
+        lc: 0x02,
+        data: [0x7C, 0x00],
+        le: 0x00));
+    var asn = ASN1(resp);
+    final encryptedNonce = asn.root[0x80]!.bytes;
+
+    // Derive key to decrypt nonce
+    final nonceKey =
+        sha1.convert([...seed, 0x00, 0x00, 0x00, 0x03]).bytes.take(16).toList();
+
+    final nonce = desDec(Uint8List.fromList(nonceKey), encryptedNonce);
+
+    // --- DH Key Exchange Step 1 ---
+    final algo1 = dh.DiffieHellman(dh.standardDHParam2Group,
+        dh.standardDHParam2Prime, dh.standardDHParam2Order);
+    final key1 = algo1.generateKey();
+
+    // GA 2: Send our ephemeral public key
+    final keyPayload1 = asn1Tag(key1.publicKey, 0x81);
+    final gaData2 = asn1Tag(keyPayload1, 0x7C);
+
+    resp = await send(ApduCommand(
+        cla: 0x10,
+        ins: 0x86,
+        p1: 0x00,
+        p2: 0x00,
+        lc: gaData2.length,
+        data: gaData2,
+        le: 0x00));
+    final respAsn1 = ASN1(resp);
+    final otherPubKey1 = respAsn1.root[0x82]!.bytes;
+
+    // --- DH Key Exchange Step 2 (Mapping) ---
+    final secret1 = algo1.computeKey(key1.privateKey, otherPubKey1);
+    final algo2 = algo1.map(secret1, nonce);
+    final key2 = algo2.generateKey();
+
+    // GA 3: Send our second ephemeral public key
+    final keyPayload2 = asn1Tag(key2.publicKey.toList(), 0x83);
+    final gaData3 = asn1Tag(keyPayload2, 0x7C);
+    resp = await send(ApduCommand(
+        cla: 0x10,
+        ins: 0x86,
+        p1: 0x00,
+        p2: 0x00,
+        lc: gaData3.length,
+        data: gaData3,
+        le: 0x00));
+    final respAsn2 = ASN1(resp);
+    final otherPubKey2 = respAsn2.root[0x84]!.bytes;
+
+    // Calculate final shared secret
+    final secret2 = algo2.computeKey(key2.privateKey, otherPubKey2);
+
+    // Derive session keys
+    final kSessEnc = sha1
+        .convert([...secret2, 0x00, 0x00, 0x00, 0x01])
+        .bytes
+        .take(16)
+        .toList()
+        .toUint8List();
+    final kSessMac = sha1
+        .convert([...secret2, 0x00, 0x00, 0x00, 0x02])
+        .bytes
+        .take(16)
+        .toList()
+        .toUint8List();
+
+    // --- Authentication Token ---
+    final oidTag = sec.protocol.bytes;
+    // The token we send is created using the card's public key (otherPubKey2)
+    // to prove to the card that we have derived the session keys correctly.
+    final authDataToSend = asn1Tag(
+        [...asn1Tag(oidTag, 0x06), ...asn1Tag(otherPubKey2, 0x84)], 0x7F49);
+
+    final authToken = macEnc(kSessMac, authDataToSend, true);
+
+    // GA 4: Send authentication token
+    final authTokenPayload = asn1Tag(authToken, 0x85);
+    final gaData4 = asn1Tag(authTokenPayload, 0x7C);
+    resp = await send(ApduCommand(
+        cla: 0x00,
+        ins: 0x86,
+        p1: 0x00,
+        p2: 0x00,
+        lc: gaData4.length,
+        data: gaData4,
+        le: 0x00));
+
+    // Verify card's authentication token
+    final receivedAuthTokenASN = ASN1(resp);
+    final receivedAuthToken = receivedAuthTokenASN.root[0x86]!.bytes;
+
+    // The card's authentication token is computed over our public key (key2.publicKey),
+    // so we must use it here to calculate the expected token.
+    final otherAuthData = asn1Tag(
+        [...asn1Tag(oidTag, 0x06), ...asn1Tag(key2.publicKey, 0x84)], 0x7F49);
+
+    final calculatedCardAuthToken = macEnc(kSessMac, otherAuthData, true);
+
+    if (!const ListEquality()
+        .equals(receivedAuthToken, calculatedCardAuthToken)) {
+      throw AuthException(
+          "PACE authentication failed: MAC mismatch on card's token.");
+    }
+
+    print('PACE authentication successful');
+
+    _kSessEnc = kSessEnc;
+    _kSessMac = kSessMac;
+    _seq = Uint8List(8);
+  }
+
+  /// Unlocks the card using the data contained in the MRZ (BAC).
   /// [birthStr] is the birth date in YYMMDD format
   /// [expireStr] is the expiration date in YYMMDD format
   /// [docNoStr] is the id (number) of the card.
-  Future<void> authenticate(
+  Future<void> authenticateBAC(
       String birthStr, String expireStr, String docNoStr) async {
-    await _initialSelect();
+    await initialSelect();
     final rndMrtd = await _getRandom();
 
-    final birth = birthStr.codeUnits;
-    final expire = expireStr.codeUnits;
-    final docNo = docNoStr.codeUnits;
-
-    final birthSeed = [
-      ...birth,
-      TravelDocument.computeCheckDigit(birthStr) + 0x30
-    ];
-    final expireSeed = [
-      ...expire,
-      TravelDocument.computeCheckDigit(expireStr) + 0x30
-    ];
-    final docSeed = [
-      ...docNo,
-      TravelDocument.computeCheckDigit(docNoStr) + 0x30
-    ];
-
-    // The SHA1 Hash of the MRZ data
-    final kSeed = sha1
-        .convert([...docSeed, ...birthSeed, ...expireSeed])
-        .bytes
-        .sublist(0, 16);
+    final kSeed = _getBACSeed(birthStr, expireStr, docNoStr);
 
     final encKey = sha1
         .convert([...kSeed, 0x00, 0x00, 0x00, 0x01])
@@ -114,13 +329,43 @@ class MRTDInterface {
     _seq = [...decResp.sublist(4, 8), ...decResp.sublist(12, 16)];
   }
 
+  Uint8List _getBACSeed(String birthStr, String expireStr, String docNoStr) {
+    final birth = birthStr.codeUnits;
+    final expire = expireStr.codeUnits;
+    final docNo = docNoStr.codeUnits;
+
+    final birthSeed = [
+      ...birth,
+      TravelDocument.computeCheckDigit(birthStr) + 0x30
+    ];
+    final expireSeed = [
+      ...expire,
+      TravelDocument.computeCheckDigit(expireStr) + 0x30
+    ];
+    final docSeed = [
+      ...docNo,
+      TravelDocument.computeCheckDigit(docNoStr) + 0x30
+    ];
+
+    // The SHA1 Hash of the MRZ data
+    return sha1
+        .convert([...docSeed, ...birthSeed, ...expireSeed])
+        .bytes
+        .sublist(0, 16)
+        .toUint8List();
+  }
+
   Future<List<int>> readDg(int numDg, {ProgressFunction? progress}) async {
     final somma = (numDg + 0x80);
 
     final readLenCmd =
         ApduCommand(cla: 0x0C, ins: 0xB0, p1: somma, p2: 0x00, le: 0x04);
 
-    final chunkLen = await _sendSM(readLenCmd);
+    // If not authenticated, send the command without the secure message
+    final auth = _kSessEnc != null && _kSessMac != null;
+    final chunkLen = auth
+        ? await _sendSM(readLenCmd)
+        : (await _card.sendRaw(readLenCmd.bytes)).response;
     final maxLen = _parseLength(chunkLen);
 
     progress?.call(0, maxLen);
@@ -137,7 +382,9 @@ class MRTDInterface {
           p2: data.length & 0xFF,
           le: readLen);
 
-      final chunk = await _sendSM(command);
+      final chunk = auth
+          ? await _sendSM(command)
+          : (await _card.sendRaw(command.bytes)).response;
 
       data.addAll(chunk);
 
@@ -190,7 +437,7 @@ class MRTDInterface {
   }
 
   /// Sends an "initial selection" APDU to the card preparing it for the authentication
-  Future<ApduResponse> _initialSelect() {
+  Future<ApduResponse> initialSelect() {
     const command = ApduCommand(
         cla: 0x00,
         ins: 0xA4,
@@ -357,17 +604,18 @@ class ApduException implements Exception {
 }
 
 class AuthException implements Exception {
-  String get message =>
-      'Authentication failed please check the input parameters.';
+  final String? message;
+  String get messageOrDefault =>
+      message ?? 'Authentication failed please check the input parameters.';
 
-  AuthException();
+  AuthException([this.message]);
 
   @override
-  String toString() => 'AuthException';
+  String toString() => 'AuthException: $messageOrDefault';
 }
 
 /// Performs a XOR between each elements of [a] and [b]. They must be of the same length.
-/// Used in [MRTDInterface.authenticate] to compute the kSeed.
+/// Used in [MRTDInterface.authenticateBAC] to compute the kSeed.
 @visibleForTesting
 Uint8List stringXor(Uint8List a, Uint8List b) {
   if (a.length != b.length) {
