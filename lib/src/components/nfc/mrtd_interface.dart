@@ -216,11 +216,12 @@ class MRTDInterface {
         .toUint8List();
 
     // --- Authentication Token ---
+    final protocolTag = sec.protocol.tag;
     final oidTag = sec.protocol.bytes;
     // The token we send is created using the card's public key (otherPubKey2)
     // to prove to the card that we have derived the session keys correctly.
     final authDataToSend = asn1Tag(
-        [...asn1Tag(oidTag, 0x06), ...asn1Tag(otherPubKey2, 0x84)], 0x7F49);
+        [...asn1Tag(oidTag, protocolTag), ...asn1Tag(otherPubKey2, 0x84)], 0x7F49);
 
     final authToken = macEnc(kSessMac, authDataToSend, true);
 
@@ -266,7 +267,7 @@ class MRTDInterface {
     await _initialSelect();
     final rndMrtd = await _getRandom();
 
-    final kSeed = auth.seed;
+    final kSeed = auth.seed.sublist(0, 16);
 
     final encKey = sha1
         .convert([...kSeed, 0x00, 0x00, 0x00, 0x01])

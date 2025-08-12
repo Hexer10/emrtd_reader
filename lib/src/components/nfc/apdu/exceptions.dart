@@ -4,6 +4,9 @@ class ApduException implements Exception {
   String get message => 'APDU error: $code';
 
   ApduException(this.code);
+
+  @override
+  String toString() => 'ApduException: $message';
 }
 
 class AuthException implements Exception {

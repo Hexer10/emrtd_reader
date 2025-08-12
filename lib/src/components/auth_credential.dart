@@ -75,7 +75,6 @@ class MRZAuthentication implements AuthCredential {
     return sha1
         .convert([...docSeed, ...birthSeed, ...expireSeed])
         .bytes
-        .sublist(0, 16)
         .toUint8List();
   }
 }
